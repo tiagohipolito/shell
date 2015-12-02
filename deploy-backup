@@ -1,0 +1,200 @@
+#!/bin/bash       
+
+red='\033[0;31m'
+yellow='\033[1;33m'
+blue='\033[1;34m'
+NC='\033[0m' # No Color
+
+DATE_SUFFIX=`date +%Y-%m-%d`
+
+WORKSPACE_DIR=$HOME/deploy
+
+map_put () {
+  eval hash"$1"='$2'
+}
+
+map_get () {
+  eval echo '${hash'"$1"'#hash}'
+}
+
+function banner(){
+
+	echo -e "${yellow}$1 ${NC}"	
+	echo -e "${yellow}=======================================================${NC}"
+	echo ""
+}
+
+function print_script_params(){
+	
+	print_param "Projeto" "$PROJECT_NAME"
+	print_param "Nome do arquivo WAR" "$WAR_NAME"
+	print_param "Workspace" "$PROJECT_DIR"
+	echo ""
+
+	if [ ! "$DEV_HOST_NAME" == "" ]; then 
+		banner "Origem"
+		print_param "Host" "$DEV_HOST_NAME"
+		print_param "Application Server" "$APP_SERVER_NAME"
+		print_param "Instância" "$DEV_INSTANCE_NAME"
+		print_param "War Location" "$DEV_HOST_NAME:${DEPLOYMENT_PATH/INSTANCE_NAME/$DEV_INSTANCE_NAME}/$WAR_NAME"
+		echo ""
+	fi;
+
+	if [ ! "$PRODUCTION_HOSTS_NAME" == "" ]; then 
+		banner "Destino"
+		print_param "Hosts" "$PRODUCTION_HOSTS_NAME"
+		print_param "Instância" "$PRODUCTION_INSTANCE_NAME"
+		print_param "User" "$PRODUCTION_USER_NAME"
+		echo ""
+	fi;
+
+}
+
+function print_param(){
+	if [ ! "$2" == "" ]; then 
+		printf "${yellow}%-25s${NC} %-30s \n" "$1" "$2" 
+	fi;
+}
+
+function clearScreen(){
+	#sleep 2
+	clear
+	echo -e "${yellow}=======================================================${NC}"
+	banner "War deploy"
+	print_script_params
+	echo ""
+	banner "$1"
+}
+
+clearScreen "Projeto"
+
+echo "0 ) criar novo projeto"
+echo ""
+
+declare -i project_number=0
+
+for project_name in $(ls $WORKSPACE_DIR)
+do
+	project_number=$(( project_number+1 ))
+	map_put "$project_number" "${project_name%%/}"
+	echo "$project_number ) ${project_name%%/}"
+done
+
+echo ""
+read -p "Selecione um projeto: " OPTION_NUMBER
+echo ""
+
+PROJECT_NAME=`map_get "$OPTION_NUMBER"`
+
+if [ "$PROJECT_NAME" == "" ]; then 
+	read -p "Nome do projeto: " PROJECT_NAME
+fi;
+
+read -p "Nome do arquivo WAR (pressione enter para utilizar $PROJECT_NAME.war) : " WAR_NAME
+
+if [ "$WAR_NAME" == "" ]; then
+	WAR_NAME="$PROJECT_NAME.war"
+fi;
+
+PROJECT_DIR=$WORKSPACE_DIR/$PROJECT_NAME
+BACKUP_DIR=$PROJECT_DIR/backup
+
+clearScreen "Application Server"
+
+declare -i APP_SERVER=1
+
+echo "1 ) JBoss 7 (deployment path: /usr/java/jboss7/INSTANCE_NAME/deployments )"
+echo "2 ) JBoss 4 (deployment path: /usr/java/jboss/server/INSTANCE_NAME/deploy )"
+echo "3 ) Custom deployment path "
+echo ""
+read -p "Selecione uma opção: " APP_SERVER
+
+if [ "$APP_SERVER" == "3" ]; then
+	APP_SERVER_NAME="Custom"
+	read -p "Entre o path de deploy (utilize o placeholder INSTANCE_NAME ): " DEPLOYMENT_PATH
+elif [ "$APP_SERVER" == "2" ]; then
+	APP_SERVER_NAME="Jboss 4"
+	DEPLOYMENT_PATH="/usr/java/jboss/server/INSTANCE_NAME/deploy"	
+elif [ "$APP_SERVER" == "1" ]; then
+	APP_SERVER_NAME="Jboss 7"
+	DEPLOYMENT_PATH="/usr/java/jboss7/INSTANCE_NAME/deployments"	
+else
+	echo -e "${red}Erro: Opção inválida. Goodbye. ${NC}"
+	exit;
+fi;
+
+echo ""
+banner "Origem (ambiente HOMOLOGAÇÃO)"
+
+read -p "Host: " DEV_HOST_NAME
+read -p "Instância: " DEV_INSTANCE_NAME
+echo ""
+
+clearScreen "Destino (ambiente PRODUÇÃO)"
+
+read -p "Hosts (separados por espaço): " PRODUCTION_HOSTS_NAME
+read -p "Instância: " PRODUCTION_INSTANCE_NAME
+read -p "Usuário remoto: " PRODUCTION_USER_NAME
+echo ""
+
+clearScreen "Log de Execução"
+
+echo -e "$blue # Criar workspace para o projeto ${NC}"
+echo -e "$blue mkdir -p $BACKUP_DIR ${NC}"
+mkdir -p $BACKUP_DIR
+
+echo ""
+echo -e "$blue # Fazer cópia do war para workspace ${NC}"
+echo -e "$blue scp  $DEV_HOST_NAME:${DEPLOYMENT_PATH/INSTANCE_NAME/$DEV_INSTANCE_NAME}/$WAR_NAME $PROJECT_DIR/$WAR_NAME ${NC}"
+scp  "$DEV_HOST_NAME:${DEPLOYMENT_PATH/INSTANCE_NAME/$DEV_INSTANCE_NAME}/$WAR_NAME" $PROJECT_DIR/$WAR_NAME
+
+echo ""
+echo -e "$blue # Fazer cópia com data do war para workspace ${NC}"
+echo -e "$blue cp $PROJECT_DIR/$WAR_NAME $PROJECT_DIR/$WAR_NAME$DATE_SUFFIX ${NC}"
+cp $PROJECT_DIR/$WAR_NAME $PROJECT_DIR/$WAR_NAME$DATE_SUFFIX
+
+for host in $PRODUCTION_HOSTS_NAME
+do
+	PRODUCTION_HOST_NAME=$host
+
+	echo ""
+	echo -e "$blue ######## ${NC}"
+	echo -e "$blue # $PRODUCTION_HOST_NAME ${NC}"
+	echo -e "$blue ######## ${NC}"
+
+	echo ""
+	echo -e "$blue # Fazer backup do war no workspace ${NC}"
+	echo -e "$blue mkdir -p $BACKUP_DIR/$PRODUCTION_HOST_NAME ${NC}"
+	mkdir -p $BACKUP_DIR/$PRODUCTION_HOST_NAME
+	echo -e "$blue scp $PRODUCTION_HOST_NAME:${DEPLOYMENT_PATH/INSTANCE_NAME/$PRODUCTION_INSTANCE_NAME}/$WAR_NAME $BACKUP_DIR/$PRODUCTION_HOST_NAME/$WAR_NAME$DATE_SUFFIX ${NC}"
+	scp "$PRODUCTION_HOST_NAME:${DEPLOYMENT_PATH/INSTANCE_NAME/$PRODUCTION_INSTANCE_NAME}/$WAR_NAME" $BACKUP_DIR/$PRODUCTION_HOST_NAME/$WAR_NAME$DATE_SUFFIX
+
+	echo ""
+	echo -e "$blue # Enviar war para fazer deploy em $PRODUCTION_HOST_NAME ${NC}"
+	echo -e "$blue scp $PROJECT_DIR/$WAR_NAME $PRODUCTION_HOST_NAME:/home/$PRODUCTION_USER_NAME/ ${NC}"
+	scp $PROJECT_DIR/$WAR_NAME $PRODUCTION_HOST_NAME:/home/$PRODUCTION_USER_NAME/
+
+	echo ""
+	echo -e "$blue # Entrar em $PRODUCTION_HOST_NAME e executar: ${NC}"
+	echo -e "$blue ############################# ${NC}"
+	echo -e "$blue # ssh $PRODUCTION_USER_NAME@$PRODUCTION_HOST_NAME ${NC}"
+	echo -e "$blue # sudo cp $WAR_NAME ${DEPLOYMENT_PATH/INSTANCE_NAME/$PRODUCTION_INSTANCE_NAME}; watch -d --interval=1 ls -l ${DEPLOYMENT_PATH/INSTANCE_NAME/$PRODUCTION_INSTANCE_NAME}${NC}"
+
+done
+
+
+echo ""
+echo -e "${yellow}Goodbye..."
+echo ""
+echo ""
+exit 0
+
+
+
+
+
+
+
+
+
+
