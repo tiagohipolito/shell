@@ -1,0 +1,157 @@
+# !/bin/sh                                                                                                                                                   
+# Source function library.
+. /etc/rc.d/init.d/functions
+export JBOSS_HOME="/usr/java/jboss7"
+
+instance_name="instance_name_placeholder"
+instance_path="$JBOSS_HOME/$instance_name"
+
+status() {
+	echo "Instance $instance_name$instance"
+	echo "========================================="
+
+	for file in `ls $JBOSS_HOME/$instance_name$instance/deployments/*.war`
+        do
+           war_name=`basename "$file"`
+           war_path="$instance_path$instance/deployments/$war_name"
+           deployed_name="$war_path.deployed"
+           failed_name="$war_path.failed"
+           undeployed_name="$war_path.undeployed"
+
+             if [ -f "$undeployed_name" ] || [ -f "$failed_name" ]
+             then
+                action "	$war_name" /bin/false
+             fi
+
+             if [ -f "$deployed_name" ]
+             then
+                action "	$war_name" /bin/true
+             fi
+        done
+}
+
+case "$2" in
+ config)
+	sudo nano --mouse $instance_path$1/configuration/$instance_name$1.xml
+	;;
+ jndi-add)
+	 str_from="<\/bindings>"
+	 str_to=" <simple name=\"$3\" value=\"$4\" \/>\n <\/bindings>"
+	 sed -i "s/$str_from/$str_to/g" $instance_path$1/configuration/$instance_name$1.xml
+	 echo "added. Jboss restart is necessary."
+	;;
+ jndi-list)
+       cat "$instance_path$1/configuration/$instance_name$1.xml" | grep "<simple"
+       ;;
+ list)
+       ls -l $instance_path$1/deployments/
+       ;;
+  log-cat)
+        tail -1000 $instance_path$1/log/server.log
+        ;;
+  log-tail)
+        tail -f $instance_path$1/log/server.log
+        ;;
+  port)
+		if [ "$1" == "0" ]; then
+			for counter in 1 2 3 4 5
+			do
+				echo " "
+				echo "== 	$instance_name$counter	== "
+				cat "$instance_path$counter/configuration/$instance_name$counter.xml" | grep "socket-binding name=\"http\" port="		
+			done	
+			
+		else
+			echo " "
+			echo "== 	$instance_name$1	== "
+			cat "$instance_path$1/configuration/$instance_name$1.xml" | grep "socket-binding name=\"http\" port="
+			
+		fi 
+		echo " "
+        ;;
+  ps)
+        echo "ps -ef | grep ""$instance_name$1"""
+        ps -ef | grep "$instance_name$1"
+        ;;
+  restart)
+        sudo /etc/init.d/jboss7 stop_$instance_name$1
+        sleep 5 
+        sudo /etc/init.d/jboss7 start_$instance_name$1
+        tail -f $instance_path$1/log/server.log
+        ;;
+  stop)
+        sudo /etc/init.d/jboss7 stop_$instance_name$1
+        watch -d --interval=1 "ps -ef | grep $instance_name$1"
+        ;;
+  start)
+        sudo /etc/init.d/jboss7 start_$instance_name$1
+		tail -f $instance_path$1/log/server.log
+       ;;
+  watch) 
+	watch -d --interval=1 ls -l $instance_path$1/deployments/
+	;;
+  status)
+	if [ "$1" == "0" ]; then
+	   for counter in 1 2 3 4 5
+	   do
+		instance=$counter; status
+	   done	
+	else
+   	   instance=$1; status
+	fi 
+	;;
+  redeploy)
+	for file in `ls $instance_path$1/deployments/*.war`
+	do 
+	   war_name=`basename "$file"`
+	   war_path="$instance_path$1/deployments/$war_name"
+       deployed_name="$war_path.deployed"
+       failed_name="$war_path.failed"
+       undeployed_name="$war_path.undeployed"
+   
+       sudo rm -f $failed_name
+	   
+		while [ true ]
+		do
+			if [ -f "$undeployed_name" ]
+			then
+				rm -f "$undeployed_name"
+			fi
+
+			if [ -f "$deployed_name" ] 
+			then
+				action "$war_name" /bin/true
+				break;
+			fi
+
+			if [ -f "$failed_name" ] 
+			then
+				action "$war_name" /bin/false
+				break;
+			fi
+			
+			sleep 1
+		done
+	done
+    ;;
+  *)
+	echo ' '
+	echo 'Usage: jb7 [INSTANCE_NUMBER] [OPTION] '
+	echo ' '
+	echo '	config		Open configuration file'
+	echo '	jndi-list	List jndi from configuration file'
+	echo '	jndi-add	Add jndi to configuration file ( jb7 jndi-add [name] [value] ) *not working'
+	echo '	list		List directory /deployments'
+	echo '	log-cat		Get contents from /log/server.log'
+	echo '	log-tail	Tail /log/server.log'
+	echo '	port		Get instances http port number'
+	echo '	ps		See instance process'
+	echo '	redeploy 	Force faileds redeploy in /deployments'
+	echo '	restart		Restart Instance'
+	echo '	start		Start Instance'
+	echo '	status		Deployments status'
+	echo '	stop		Stop Instace'
+	echo '	watch		Watch directory /deployments'
+	echo ' '
+       ;;
+esac

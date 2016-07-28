@@ -1,0 +1,116 @@
+#!/bin/sh                                                                                                                                                   
+#
+# jboss7        Startup script for the JBoss7
+#
+# chkconfig: - 85 15
+# description: JBoss7
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+export JBOSS_HOME="/usr/java/jboss7"
+
+declare -a instances=("dev01" "dev02" "dev03" "dev04")
+
+start() {
+       pid_def=`pgrep $1.sh`
+       
+       pid_file=/var/run/jboss7_$1.pid
+
+
+        if [ "$pid_def" != "" ]; then
+                action $"Starting JBoss7 $1: is already running" /bin/false
+        else
+                action $"Starting JBoss7 $1: "
+                /usr/java/jboss7/bin/$1.sh -b 0.0.0.0 >> /var/log/jboss7_$1.log 2>&1 &
+                sleep 1
+                echo `pgrep $1.sh` > $pid_file 
+        fi
+}
+
+stop() {
+	pid_file=/var/run/jboss7_$1.pid
+	kill_def=1
+        if [ -s $pid_file ]; then
+                pkill -TERM -P `cat $pid_file` >/dev/null 2>&1
+                kill_def=$?
+        fi
+        if [ $kill_def -eq 0 ]; then
+                action $"Stoping JBoss7 $1: " /bin/true
+        else action $"Stoping JBoss7 $1: " /bin/false
+        fi
+        rm -f $pid_file
+}
+
+for_each_instance() {
+	for i in "${instances[@]}"
+	do
+	    case "$1" in
+	      start)
+		 start "$i"
+	      ;;
+	      stop)
+		 stop "$i"
+	      ;;
+	      status)
+		 status -p "/var/run/jboss7_$i.pid" "jboss7_$i"
+	      ;;
+	      status)
+		 status -p "/var/run/jboss7_$i.pid" "jboss7_$i"
+	      ;;
+	      ps)
+		 pid_file=/var/run/jboss7_$i.pid
+		 if [ -s $pid_file ]; then
+		    ps -ef | grep `cat "/var/run/jboss7_$i.pid"` 
+		 fi;
+	      ;;
+	   esac
+	done
+}
+
+case "$1" in
+  start)
+	for_each_instance "start"
+        ;;
+  start_01)
+        start ${instances[0]}
+        ;;
+  start_02)
+        start ${instances[1]}
+        ;;
+  start_03)
+        start ${instances[2]}
+        ;;
+ start_04)
+        start ${instances[3]}
+       ;;
+  stop)
+        for_each_instance "stop"
+        ;;
+  stop_01)
+        stop ${instances[0]}
+        ;;
+  stop_02)
+        stop ${instances[1]}
+        ;;
+  stop_03)
+        stop ${instances[2]}
+        ;;
+ stop_04)
+        stop ${instances[3]}
+        ;;
+  status)
+	for_each_instance "status"
+        ;;
+  restart)
+	for_each_instance "stop"
+        sleep 5
+	for_each_instance "start"
+        ;;
+   ps)
+	for_each_instance "ps"
+        ;;
+  *)
+        echo $"Usage: $prog {start|start_01|start_02|start_03|start_04|stop|stop_01|stop_02|stop_03|stop_04|restart|status|ps}"
+        exit 1
+esac
+

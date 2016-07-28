@@ -1,0 +1,34 @@
+# !/bin/sh                                                                                                                                                   
+
+
+echo "	Cleaning previous build ... ok"
+rm -f jb7
+
+echo "	Creating jb7 script for vm90 ... ok"
+sed 's/instance_name_placeholder/dev0/' jb7-dev > jb7
+
+echo "	Copying to vm90 ... ok"
+scp jb7 vm90:/home/talves/
+
+echo "	Installing script ... ok"
+ssh -t vm90 'sudo cp jb7 /usr/local/bin/'
+
+echo "	Cleaning previous build ... ok"
+rm -f jb7
+
+echo "	Creating jb7 script for vm91 ... ok"
+sed 's/instance_name_placeholder/test0/' jb7-dev > jb7
+
+echo "	Copying to vm91 ... ok"
+scp jb7 vm91:/home/talves/
+
+echo "	Installing script ... ok"
+ssh -t vm91 'sudo cp jb7 /usr/local/bin/'
+
+rm -f jb7
+echo "Script deployed"
+
+
+
+
+
